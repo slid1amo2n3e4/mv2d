@@ -3,38 +3,57 @@
 App::MoarVM::Debug
 ==================
 
-The MoarVM Debugger allows you to connect to a local MoarVM instance - if it was started with the --debug-port argument passed to MoarVM itself - and control execution of threads, introspect the stack and individual objects.
+The interactive MoarVM debugger installs a script called `raku-debug` that allows a developer to start a Raku program in debugger mode, while in another window allows the developer to step through the program and perform various types of introspection.
 
-MoarVM also takes the --debug-suspend commandline argument, which causes MoarVM to immediately pause execution at the start.
+Starting in debugger mode
+-------------------------
 
-Start the moar-remote script and pass the port you used for --debug-port and it should connect.
+    $ raku-debug your-program.raku arg1 arg2
+
+Starting a program in debugger mode is as simple as replacing `raku` by `raku-debug` on the command line. That's it.
+
+When it is started this way, it will show a text on STDERR such as:
+
+    Running with debugging enabled at localhost port 27434
+
+Your program will not actually execute until you have entered the `resume` command in the debugger.
+
+Starting the debugger
+---------------------
+
+    $ raku-debug
+
+To start the debugger, call `raku-debug` **without** any arguments. It will show you a text such as:
+
+    Welcome to the MoarVM Remote Debugger
+
+    Connecting to MoarVM remote on localhost port 27434
+    success!
+    >
+
+You would typically then set breakpoints or do some introspection. And then start the program by typing "resume" to lift the suspension of all threads in the program.
 
 Type "help" in the debugger's CLI to see what commands are available to you.
 
-Beta Use Instructions
----------------------
+Limitations
+-----------
 
-  * Install the module:
+The debugger uses a single port to communicate between your program and the debugger. By default this is port `27434`.
 
-    $ zef install App::MoarVM::Debug
+This means that on any given computer, only one program can be debugged this way, and only one debugger can run at the same time.
 
-  * Locate `raku-m` bash script (or `raku.bat` on Windows): `locate raku-m`
+Should you need to have more debuggers running at the same time, or for some reason you need to use another port, you can set the environment variable `MVM_DEBUG_PORT` to the port you'd like to use.
 
-  * Copy it to some other name:
+To start your program:
 
-    $ cp raku-m raku-moar-remote-m
+    $ MVM_DEBUG_PORT=4242 raku-debug your-program.raku arg1 arg2
 
-  * Edit it to include `--debug-port=9999` and `--debug-suspend` in `moar` options:
+To start the debugger:
 
-    […] install/bin/moar --debug-port=9999 --debug-suspend --execname=[…]
+    $ MVM_DEBUG_PORT=4242 raku-debug
 
-  * Start the program you want to debug using that new script:
-
-    $ raku-moar-remote-m  my-script.raku
-
-  * Start the debugger CLI app and have it connect to the same port that's in the shell script from step 4:
-
-    $ moar-remote 9999
+Some hints
+----------
 
   * (Optional) Write `assume thread 1` to assume tracking of first (main) thread
 

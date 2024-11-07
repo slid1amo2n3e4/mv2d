@@ -13,7 +13,10 @@ multi sub boring-metadata($_ where *.starts-with("p6opaque"), $v) {
       !! False
 }
 
-sub MAIN(Int $port, Int :$abbreviate-length is copy = 70) is export {
+sub MAIN(
+  Int $port = %*ENV<MVM_DEBUG_PORT> // 27434,
+  Int :$abbreviate-length is copy = 70
+) is export {
     note "Welcome to the MoarVM Remote Debugger";
     note "";
     note "For best results, please run this program inside rlwrap";

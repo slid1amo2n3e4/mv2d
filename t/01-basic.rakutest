@@ -1,0 +1,9 @@
+use Test;
+use App::MoarVM::Debug::Formatter;
+use App::MoarVM::Debug::Breakpoints;
+
+plan 1;
+
+pass "all modules loaded ok";
+
+# vim: expandtab shiftwidth=4

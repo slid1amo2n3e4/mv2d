@@ -150,3 +150,4 @@ our sub pad(Str() $str, $size) is export {
     $result;
 }
 
+# vim: expandtab shiftwidth=4

@@ -1,0 +1,127 @@
+=begin pod
+
+=head1 App::MoarVM::Debug
+
+The MoarVM Debugger allows you to connect to a local MoarVM instance
+- if it was started with the --debug-port argument passed to MoarVM
+itself - and control execution of threads, introspect the stack and
+individual objects.
+
+MoarVM also takes the --debug-suspend commandline argument, which
+causes MoarVM to immediately pause execution at the start.
+
+Start the moar-remote script and pass the port you used for
+--debug-port and it should connect.
+
+Type "help" in the debugger's CLI to see what commands are available
+to you.
+
+=head2 Beta Use Instructions
+
+=item Install the module:
+
+=begin code
+
+$ zef install App::MoarVM::Debug
+
+=end code
+
+=item Locate C<raku-m> bash script (or C<raku.bat> on Windows): C<locate raku-m>
+
+=item Copy it to some other name:
+
+=begin code
+
+$ cp raku-m raku-moar-remote-m
+
+=end code
+
+=item Edit it to include C<--debug-port=9999> and C<--debug-suspend>
+in C<moar> options:
+
+=begin code
+
+[…] install/bin/moar --debug-port=9999 --debug-suspend --execname=[…]
+
+=end code
+
+=item Start the program you want to debug using that new script:
+
+=begin code
+
+$ raku-moar-remote-m  my-script.raku
+
+=end code
+
+=item Start the debugger CLI app and have it connect to the same port
+that's in the shell script from step 4:
+
+=begin code
+
+$ moar-remote 9999
+
+=end code
+
+=item (Optional) Write C<assume thread 1> to assume tracking of
+first (main) thread
+
+=item Set a breakpoint
+
+=begin code
+
+> breakpoint "my-script.raku" 1234 1 1
+
+=end code
+
+The string is the filename and C<1234> is the line number (C<1 1>
+is the secret ingredient).  Ensure the line number doesn't point
+to an empty line.
+
+=item Type C<resume> to run your script.
+
+=item The breakpoint will trigger, you can type C<all lexicals>
+to view all lexicals. The numbers shown next to them in bold are
+"handle" numbers.
+
+=item Find the object you want to dump and type C<metadata 1234>
+(C<1234> is the handle number).
+
+If the features includes C<attributes>, you can enter C<attributes
+1234> for this object to get information about the object's attributes.
+
+If the features includes C<positional>, you can enter C<positionals
+1234> to get information about the positional elements of the object.
+
+If the features includes C<associative>, you can enter C<associatives
+1234> to get information about the associative elements (keys and
+values) of the object.
+
+The C<metadata> command is only needed if you don't know which of
+these commands is useful for any given type.
+
+=item Type C<help> to see all of the available commands.
+
+=head2 Known Issues
+
+The only stepping mode currently available is Step Into.
+
+Backtraces will show incorrect line numbers.
+
+=head1 AUTHOR
+
+=item Timo Paulssen
+
+Source can be located at: https://github.com/raku-community-modules/App-MoarVM-Debug .
+Comments and Pull Requests are welcome.
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2017 - 2020 Edument AB
+
+Copyright 2024 The Raku Community
+
+This library is free software; you can redistribute it and/or modify it under the Artistic License 2.0.
+
+=end pod
+
+# vim: expandtab shiftwidth=4

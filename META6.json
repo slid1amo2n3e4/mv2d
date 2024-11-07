@@ -1,21 +1,38 @@
 {
-  "authors" : [
+  "auth": "zef:raku-community-modules",
+  "authors": [
     "Timo Paulssen"
   ],
-  "build-depends" : [ ],
-  "depends" : [ "JSON::Fast", "MoarVM::Remote" ],
-  "description" : "A command line interface application for debugging Perl 6 and NQP code using the MoarVM remote debugger.",
-  "license" : "Artistic-2.0",
-  "name" : "App::MoarVM::Debug",
-  "perl" : "6.c",
-  "provides" : {
-    "moar-remote" : "bin/moar-remote",
-    "App::MoarVM::Debug::Formatter" : "lib/App/MoarVM/Debug/Formatter.pm6",
-    "App::MoarVM::Debug::Breakpoints" : "lib/App/MoarVM/Debug/Breakpoints.pm6"
+  "build-depends": [
+  ],
+  "depends": [
+    "JSON::Fast",
+    "MoarVM::Remote"
+  ],
+  "description": "A command line interface for debugging Raku and NQP code using the MoarVM remote debugger",
+  "license": "Artistic-2.0",
+  "name": "App::MoarVM::Debug",
+  "perl": "6.c",
+  "provides": {
+    "App::MoarVM::Debug": "lib/App/MoarVM/Debug.rakumod",
+    "App::MoarVM::Debug::Breakpoints": "lib/App/MoarVM/Debug/Breakpoints.rakumod",
+    "App::MoarVM::Debug::Formatter": "lib/App/MoarVM/Debug/Formatter.rakumod"
   },
-  "resources" : [ ],
-  "source-url" : "https://github.com/edumentab/p6-app-moarvm-debug.git",
-  "tags" : [ "MoarVM", "Debug", "API", "CLI", "Commandline", "Terminal", "Devel", "Development", "Client" ],
-  "test-depends" : [ ],
-  "version" : "0.0.2"
+  "resources": [
+  ],
+  "source-url": "https://github.com/raku-community-modules/App-MoarVM-Debug.git",
+  "tags": [
+    "MoarVM",
+    "Debug",
+    "API",
+    "CLI",
+    "Commandline",
+    "Terminal",
+    "Devel",
+    "Development",
+    "Client"
+  ],
+  "test-depends": [
+  ],
+  "version": "0.0.2"
 }

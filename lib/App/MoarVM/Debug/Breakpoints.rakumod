@@ -24,3 +24,4 @@ sub output-breakpoint-notifications(Str $file, Int $line, Supply $notifications)
     };
 }
 
+# vim: expandtab shiftwidth=4

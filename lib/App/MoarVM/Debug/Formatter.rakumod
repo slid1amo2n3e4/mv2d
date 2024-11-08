@@ -1,5 +1,7 @@
 unit module MoarVM::Remote::CLI::Formatter;
 
+use String::Utils <root>;
+
 my $has-color = (try require Terminal::ANSIColor) !=== Nil;
 my $wants-color = $*OUT.t;
 
@@ -70,7 +72,24 @@ our sub format-lexicals-for-frame($lexicals, :@handles-seen, :%handle-renaming) 
 }
 
 our sub format-backtrace(@backtrace) is export {
-    @backtrace.map({ ($++, .<type>, .<name> || "<anon>", "$_.<file>:$_.<line>", .<bytecode_file> // "none") }).cache
+    my str $root = root @backtrace.map: {
+        my str $name = .<name> || "<anon>";
+        last if $name eq '<unit>';
+
+        with .<bytecode_file> { $_ if $_ }
+    }
+    my int $offset = $root.ends-with("CORE.")
+      ?? $root.chars - 5
+      !! $root.chars;
+
+    @backtrace.map({
+        my str $name = .<name> || "<anon>";
+        last if $name eq '<unit-outer>';
+
+        my str $bytecode = .<bytecode_file> // "";
+        $bytecode = $bytecode.substr($offset) if $bytecode;
+        ($++, .<type>, $name, "$_<file>:$_<line>", $bytecode)
+    }).List
 }
 
 our sub print-table(@chunks is copy, :%abbreviated, :%reverse-abbreviated, :$abbreviate-length) is export {
@@ -112,13 +131,13 @@ our sub print-table(@chunks is copy, :%abbreviated, :%reverse-abbreviated, :$abb
     }
     my $num-cols = [max] @chunks>>.value.map([max] *>>.elems).flat;
     if $num-cols == -Inf {
-        say @chunks.perl;
+        say @chunks.raku;
         try say @chunks[0].key, ": empty.";
         return;
     }
     CATCH {
-        .perl.say;
-        .perl.say for @chunks;
+        .raku.say;
+        .raku.say for @chunks;
     }
     my @col-sizes = 0 xx $num-cols;
     for @chunks {
@@ -141,6 +160,9 @@ our sub print-table(@chunks is copy, :%abbreviated, :%reverse-abbreviated, :$abb
             @result.push: "\n";
         }
     }
+
+    @result.shift;  # remove first newline
+    @result.pop;    # remove last newline
     say @result.join("");
 }
 

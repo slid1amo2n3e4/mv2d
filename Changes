@@ -2,6 +2,14 @@ Revision history for App-MoarVM-Debug
 
 {{$NEXT}}
 
+0.1.2  2024-11-08T15:11:21+01:00
+    - Rename "raku-debug" to "raku-remote-debug" to prevent
+      confusion with the already core-installed "raku-debug"
+      script
+    - Don't mention `rlwrap` if the program is already
+      `rlwrap`ped
+    - Streamline handling of many interacive options
+
 0.1.1  2024-11-07T20:20:54+01:00
     - Simplify setup and handling by introducing the
       "raku-debug" script, and adapt documentation

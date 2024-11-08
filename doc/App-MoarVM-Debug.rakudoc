@@ -2,7 +2,7 @@
 
 =head1 App::MoarVM::Debug
 
-The interactive MoarVM debugger installs a script called C<raku-debug>
+The interactive MoarVM debugger installs a script called C<raku-remote-debug>
 that allows a developer to start a Raku program in debugger mode,
 while in another window allows the developer to step through the
 program and perform various types of introspection.
@@ -11,12 +11,12 @@ program and perform various types of introspection.
 
 =begin code
 
-$ raku-debug your-program.raku arg1 arg2
+$ raku-remote-debug your-program.raku arg1 arg2
 
 =end code
 
 Starting a program in debugger mode is as simple as replacing C<raku>
-by C<raku-debug> on the command line.  That's it.
+by C<raku-remote-debug> on the command line.  That's it.
 
 When it is started this way, it will show a text on STDERR such as:
 
@@ -33,11 +33,11 @@ C<resume> command in the debugger.
 
 =begin code
 
-$ raku-debug
+$ raku-remote-debug
 
 =end code
 
-To start the debugger, call C<raku-debug> B<without> any arguments.
+To start the debugger, call C<raku-remote-debug> B<without> any arguments.
 It will show you a text such as:
 
 =begin output
@@ -74,7 +74,7 @@ To start your program:
 
 =begin code
 
-$ MVM_DEBUG_PORT=4242 raku-debug your-program.raku arg1 arg2
+$ MVM_DEBUG_PORT=4242 raku-remote-debug your-program.raku arg1 arg2
 
 =end code
 
@@ -82,7 +82,7 @@ To start the debugger:
 
 =begin code
 
-$ MVM_DEBUG_PORT=4242 raku-debug
+$ MVM_DEBUG_PORT=4242 raku-remote-debug
 
 =end code
 

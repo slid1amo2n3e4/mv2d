@@ -3,27 +3,126 @@ use App::MoarVM::Debug::Formatter;
 use App::MoarVM::Debug::Breakpoints;
 use JSON::Fast;
 
-multi sub boring-metadata($, $) {
-    False
-}
+my str $spaces     = " "  x 80;
+my str $backspaces = "\b" x 80;
 
-multi sub boring-metadata($_ where *.starts-with("p6opaque"), $v) {
-    .starts-with("p6opaque_unbox") || .ends-with("s_delegate")
+#- global variables ------------------------------------------------------------
+
+my $remote;
+my $default-thread;
+my @user-threads;
+
+#- helper subs -----------------------------------------------------------------
+
+sub boring-metadata($_, $v) {
+    .starts-with("p6opaque")
+      && (.starts-with("p6opaque_unbox") || .ends-with("s_delegate"))
       ?? $v == -1
       !! False
 }
+
+sub remote(str $action, &remote) {
+    my int $width = $action.chars;
+    print $action;
+
+    my $result := await remote();
+    print $backspaces.substr(0,$width);
+    print     $spaces.substr(0,$width);
+    print $backspaces.substr(0,$width);
+    $result
+}
+
+sub thread($thread) {
+    with $thread.defined ?? $thread.Int !! $default-thread {
+        $_
+    }
+    else {
+        say "Must specify a thread, or do an 'assume thread N' first";
+        Any
+    }
+}
+
+#- action handling subs --------------------------------------------------------
+
+multi sub assume-thread(--> Nil) {
+    say "Not going to assume any thread for further commands";
+    $default-thread = Any;
+}
+multi sub assume-thread($thread --> Nil) {
+    with thread($thread) {
+        say "Assuming thread $_ as default for further commands";
+        $default-thread = $_;
+    }
+}
+
+sub backtrace($thread --> Nil) {
+    with thread($thread) {
+        my @frames := await $remote.dump($_);
+        print-table
+          ("Stack trace of thread &bold($_)" => format-backtrace(@frames),);
+    }
+}
+
+sub connect($port) {
+    my $result := remote
+      "Connecting to MoarVM remote on localhost port $port",
+      { MoarVM::Remote.connect($port) }
+
+    say "Connected on localhost port $port";
+    $result
+}
+
+sub is-suspended(--> Nil) {
+    say (remote "checking", { $remote.is-execution-suspended })
+      ?? "No user threads are running"
+      !! "All user threads are running";
+}
+
+sub resume($thread is copy --> Nil) {
+    $thread = $thread.defined ?? $thread.Int !! Whatever;
+    remote "resuming", { $remote.resume($thread) }
+
+    say $thread
+      ?? "Resumed thread $thread"
+      !! "Resumed all user threads";
+}
+
+sub suspend($thread is copy --> Nil) {
+    $thread = $thread.defined ?? $thread.Int !! Whatever;
+    remote "suspending", { $remote.suspend($thread) }
+
+    say $thread
+      ?? "Suspended thread $thread"
+      !! "Suspended all user threads";
+}
+
+sub thread-list(--> Nil) {
+    my $result := remote "fetching thread list", { $remote.threads-list }
+    my @threads = 
+      <<thread suspended "native id" "num locks" "app lifetime?" name>>.item;
+    for $result.sort(*.<thread>) {
+        @threads.push: (
+          bold(.<thread>), .<suspended>, .<native_id>.fmt("0x%x"),
+          .<num_locks>, .<app_lifetime>, (.<name> // "")
+        );
+    }
+    print-table ("Threads" => @threads,)
+}
+
+#- input handling --------------------------------------------------------------
 
 sub MAIN(
   Int $port = %*ENV<MVM_DEBUG_PORT> // 27434,
   Int :$abbreviate-length is copy = 70
 ) is export {
-    note "Welcome to the MoarVM Remote Debugger";
-    note "";
-    note "For best results, please run this program inside rlwrap";
-    note "";
-    note "Connecting to MoarVM remote on localhost port $port";
-    my $remote = await MoarVM::Remote.connect($port);
-    note "success!";
+    say "Welcome to the MoarVM Remote Debugger";
+
+    unless %*ENV<_>:exists and %*ENV<_>.ends-with: 'rlwrap' {
+        say "";
+        say "For best results, please run this program inside rlwrap";
+    }
+    $remote := connect($port);
+    assume-thread(1);
 
     my %interesting-events;
     my Lock $events-lock .= new;
@@ -34,7 +133,8 @@ sub MAIN(
             if %interesting-events{.<id>}($_) eq "delete" {
                 %interesting-events{.<id>}:delete
             }
-        } else {
+        }
+        else {
             say "Got event: "; .say
         }
         Nil;
@@ -45,16 +145,17 @@ sub MAIN(
     my %reverse-abbreviated;
 
     sub print-table(@chunks) {
-        MoarVM::Remote::CLI::Formatter::print-table(@chunks, :%abbreviated, :%reverse-abbreviated, :$abbreviate-length);
+        MoarVM::Remote::CLI::Formatter::print-table(
+          @chunks, :%abbreviated, :%reverse-abbreviated, :$abbreviate-length
+        );
     }
 
     my @last-command-handles;
 
     my $last-command;
 
-    my $assumed-thread;
 
-    while (my $input = prompt("> ")) !=== Any {
+    until (my $input = prompt("> ")) === Any {
         $_ = $input;
         if m/^$/ {
             $_ = $last-command;
@@ -62,27 +163,20 @@ sub MAIN(
             $last-command = $_;
         }
         when /:s execution / {
-            say (await $remote.is-execution-suspended()) ?? "Execution suspended" !! "Execution not suspended";
+            is-suspended();
         }
         when /:s sus[p[e[nd?]?]?]? (\d+)? / {
-            say "trying to suspend thread $0" with $0;
-            say "trying to suspend all threads" without $0;
-            say await $remote.suspend($0 ?? $0.Int.self !! Whatever);
+            suspend $0;
         }
         when /:s res[u[m[e?]?]?]? (\d+)? / {
-            say "trying to resume thread $0" with $0;
-            say "trying to resume all threads" without $0;
-            say await $remote.resume($0 ?? $0.Int.self !! Whatever);
+            resume $0
         }
-        when /:s [dump|bt|backtrace] [(\d+)||<?{ defined $assumed-thread }>||<!>] / {
-            my $thread = $0 ?? $0.Int.self !! $assumed-thread;
-            my @frames := await $remote.dump($thread);
-            my @table = "Stack trace of thread &bold($thread)" => format-backtrace(@frames);
-            print-table @table;
+        when /:s [dump|bt|backtrace] (\d+)? / {
+            backtrace($0);
         }
-        when /:s [fr|frame] (\d+) [(\d+)||<?{ defined $assumed-thread }>||<!>] / {
+        when /:s [fr|frame] (\d+) [(\d+)||<?{ defined $default-thread }>||<!>] / {
             my $frame-num = $0.Int;
-            my $thread = $1 ?? $1.Int.self !! $assumed-thread;
+            my $thread = $1 ?? $1.Int.self !! $default-thread;
             my @frames := await $remote.dump($thread);
             if $frame-num < @frames {
                 # ${:bytecode_file("/Users/vrurg/src/Perl6/BO-Trading/lib/.precomp/F4586E0D974A9D7EE7CD910A6978305B9EBD4E57/C4/C4B0B4FF604F072E60052CB30401D1B21830E56D"), :file("/Users/vrurg/src/Perl6/BO-Trading/lib/BO-Trading/Scraper.pm6 (BO-Trading::Scraper)"), :line(148), :name(""), :type("Block")}
@@ -106,15 +200,10 @@ sub MAIN(
             }
         }
         when / [tl|threads] / {
-            my $result = await $remote.threads-list;
-            my @table = "Threads list" => gather {
-                take ["thread", "suspended", "native id", "num locks", "app lifetime?", "name"];
-                take [bold(.<thread>), .<suspended>, .<native_id>.fmt("0x%x"), .<num_locks>, .<app_lifetime>, (.<name> // "")] for $result.list.sort(*.<thread>);
-            }.cache;
-            print-table @table;
+            thread-list;
         }
-        when /:s [ctxhandle|[call|stack]frame] [(\d+)||<?{ defined $assumed-thread }>||<!>] (\d+) / {
-            my $thread = $0 ?? $0.Int.self !! $assumed-thread;
+        when /:s [ctxhandle|[call|stack]frame] [(\d+)||<?{ defined $default-thread }>||<!>] (\d+) / {
+            my $thread = $0 ?? $0.Int.self !! $default-thread;
             say (await $remote.context-handle($thread, $1.Int.self)).&to-json(:pretty);
         }
         when /:s caller (\d+) / {
@@ -125,13 +214,13 @@ sub MAIN(
             my $result = await $remote.outer-context-handle($0.Int.self);
             say $result.&to-json(:pretty);
         }
-        when /:s coderef [(\d+)||<?{ defined $assumed-thread }>||<!>] (\d+) / {
-            my $thread = $0 ?? $0.Int.self !! $assumed-thread;
+        when /:s coderef [(\d+)||<?{ defined $default-thread }>||<!>] (\d+) / {
+            my $thread = $0 ?? $0.Int.self !! $default-thread;
             my $result = await $remote.coderef-handle($thread, $1.Int.self);
             say $result.&to-json(:pretty);
         }
-        when /:s all lex[icals]? [(\d+)||<?{ defined $assumed-thread }>||<!>]/ {
-            my $thread = $0 ?? $0.Int.self !! $assumed-thread;
+        when /:s all lex[icals]? [(\d+)||<?{ defined $default-thread }>||<!>]/ {
+            my $thread = $0 ?? $0.Int.self !! $default-thread;
             # convenience: grab all lexicals on the stack
             my @allframes = (await $remote.dump($thread));
             my $framecount = +@allframes;
@@ -262,13 +351,13 @@ sub MAIN(
                 }.cache;
             print-table(@table);
         }
-        when /:s met[hod]? (\d+) \"(<-["]>+)\" [(\d+)||<?{ defined $assumed-thread }>||<!>]/ {
-            my $thread = $2 ?? $2.Int.self !! $assumed-thread;
+        when /:s met[hod]? (\d+) \"(<-["]>+)\" [(\d+)||<?{ defined $default-thread }>||<!>]/ {
+            my $thread = $2 ?? $2.Int.self !! $default-thread;
             my $result = await $remote.find-method($thread, $0.Int, $1.Str);
             say $result.&to-json(:pretty);
         }
-        when /:s de[cont]? (\d+) [(\d+)||<?{ defined $assumed-thread }>||<!>]/ {
-            my $thread = $1 ?? $1.Int.self !! $assumed-thread;
+        when /:s de[cont]? (\d+) [(\d+)||<?{ defined $default-thread }>||<!>]/ {
+            my $thread = $1 ?? $1.Int.self !! $default-thread;
             my $result = await $remote.decontainerize($thread, $0.Int);
             say $result.&to-json(:pretty);
         }
@@ -292,12 +381,14 @@ sub MAIN(
             my $result = await $remote.release-handles(@free);
             @last-command-handles = Empty;
         }
-        when /:s assume thread (\d+) / {
-            say "Going to assume thread $0.Int() for further commands";
-            $assumed-thread = $0.Int();
+        when /:s assume thread (\d+)? / {
+            assume-thread($0);
         }
-        when /:s s[tep]? (into|over|out)? [(\d+)||<?{ defined $assumed-thread }>||<!>] / {
-            my $thread = $1 ?? $1.Int.self !! $assumed-thread;
+        when /:s assume no thread / {
+            assume-thread;
+        }
+        when /:s s[tep]? (into|over|out)? [(\d+)||<?{ defined $default-thread }>||<!>] / {
+            my $thread = $1 ?? $1.Int.self !! $default-thread;
             $events-lock.protect: {
                 my $result = await do
                     if    !$0.defined or $0 eq "into"
@@ -343,10 +434,6 @@ sub MAIN(
                 my $result = await $remote.get-available-hlls();
                 say "result: ", $result;
             }
-        }
-        when /:s assume no thread / {
-            say "Not going to assume any thread for further commands";
-            $assumed-thread = Any;
         }
         when /:s abbrev length (\d+) / {
             $abbreviate-length = $0.Int;

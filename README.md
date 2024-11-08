@@ -3,14 +3,14 @@
 App::MoarVM::Debug
 ==================
 
-The interactive MoarVM debugger installs a script called `raku-debug` that allows a developer to start a Raku program in debugger mode, while in another window allows the developer to step through the program and perform various types of introspection.
+The interactive MoarVM debugger installs a script called `raku-remote-debug` that allows a developer to start a Raku program in debugger mode, while in another window allows the developer to step through the program and perform various types of introspection.
 
 Starting in debugger mode
 -------------------------
 
-    $ raku-debug your-program.raku arg1 arg2
+    $ raku-remote-debug your-program.raku arg1 arg2
 
-Starting a program in debugger mode is as simple as replacing `raku` by `raku-debug` on the command line. That's it.
+Starting a program in debugger mode is as simple as replacing `raku` by `raku-remote-debug` on the command line. That's it.
 
 When it is started this way, it will show a text on STDERR such as:
 
@@ -21,9 +21,9 @@ Your program will not actually execute until you have entered the `resume` comma
 Starting the debugger
 ---------------------
 
-    $ raku-debug
+    $ raku-remote-debug
 
-To start the debugger, call `raku-debug` **without** any arguments. It will show you a text such as:
+To start the debugger, call `raku-remote-debug` **without** any arguments. It will show you a text such as:
 
     Welcome to the MoarVM Remote Debugger
 
@@ -46,11 +46,11 @@ Should you need to have more debuggers running at the same time, or for some rea
 
 To start your program:
 
-    $ MVM_DEBUG_PORT=4242 raku-debug your-program.raku arg1 arg2
+    $ MVM_DEBUG_PORT=4242 raku-remote-debug your-program.raku arg1 arg2
 
 To start the debugger:
 
-    $ MVM_DEBUG_PORT=4242 raku-debug
+    $ MVM_DEBUG_PORT=4242 raku-remote-debug
 
 Some hints
 ----------

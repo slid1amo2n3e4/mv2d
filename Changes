@@ -1,6 +1,7 @@
 Revision history for App-MoarVM-Debug
 
 {{$NEXT}}
+    - Add dependency on String::Utils
 
 0.1.2  2024-11-08T15:11:21+01:00
     - Rename "raku-debug" to "raku-remote-debug" to prevent

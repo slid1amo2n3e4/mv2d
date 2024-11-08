@@ -6,6 +6,7 @@
   "build-depends": [
   ],
   "depends": [
+    "String::Utils",
     "JSON::Fast",
     "MoarVM::Remote"
   ],

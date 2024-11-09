@@ -18,6 +18,9 @@ my $abbreviate-length;
 my @last-command-handles;
 my $last-command;
 
+my $events-lock := Lock.new;
+my %interesting-events;
+
 my constant %name-map =
  bytecode_file => "Bytecode file",
  file          => "File",
@@ -55,6 +58,7 @@ sub remote(str $action, &code-to-remote, :$dont-await) {
     print $backspaces.substr(0,$width);
     print     $spaces.substr(0,$width);
     print $backspaces.substr(0,$width);
+
     $result
 }
 
@@ -115,7 +119,7 @@ Supported commands:
 &bold("outer") [handle (MVMContext)]
   Retrieve a handle for a frame's outer frame (MVMContext)
 
-&bold("coderef") [thread number] [frame number]
+&bold("coderef") frame number [thread number]
   Retrieve a handle for the code object (MVMCode) for a frame on a thread's stack.
 
 &bold("lexicals") [handle (MVMContext)]
@@ -180,7 +184,7 @@ CMDS
 #- action handling subs --------------------------------------------------------
 
 # convenience: grab all lexicals on the stack
-sub all-lexicals($id) {
+sub all-lexicals($id --> Nil) {
     with thread($id) -> $thread {
         my $forget-promise;
 
@@ -244,6 +248,27 @@ sub all-lexicals($id) {
     }
 }
 
+sub associatives(Int() $handle --> Nil) {
+    my $result := remote
+      "fetching associaitives for handle $handle",
+      { $remote.object-associatives($handle) }
+
+    my @associatives is List = gather {
+        if $result<kind> eq "obj" {
+            @last-command-handles = Empty;
+            for $result<contents>.list {
+                my @attributes = format-attributes(.value);
+                @last-command-handles.push(.value<handle>) if .value<handle>;
+                take [&bold(.value<handle>), .key, .value<type>, @attributes.join(", ")];
+            }
+        }
+        else {
+            take ["NYI"];
+        }
+    }
+    table-print "Associatives in handle &bold($handle)" => @associatives;
+}
+
 multi sub assume-thread(--> Nil) {
     say "Not going to assume any thread for further commands";
     $default-thread = Any;
@@ -255,45 +280,110 @@ multi sub assume-thread($thread --> Nil) {
     }
 }
 
-sub backtrace($thread --> Nil) {
-    with thread($thread) {
-        my @frames := remote
-          "Fetching backtrace of thread $thread",
-          { $remote.dump($_) }
+sub attributes(Int() $handle --> Nil) {
+    my $result := remote
+      "fetching attribute info for $handle",
+      { $remote.attributes($handle) }
 
-        table-print
-          "Stack trace of thread &bold($_)" => format-backtrace(@frames);
+    say "Attributes for handle &bold($handle)";
+    table-print $result.categorize(*.<class>).map: {
+        "From class $_.key()"
+          => .value.map({
+                my str $attributes = format-attributes($_).join(", ");
+                my str $type       = .<kind>;
+                $type = .<type> if $type eq "obj";
+
+                (bold(.<handle> // ""), $type, .<name>, $attributes)
+             }).List
     }
 }
 
-sub caller(Int() $handle --> Int) {
+sub backtrace($id --> Nil) {
+    with thread($id) -> $thread {
+        my @frames := remote
+          "Fetching backtrace of thread $thread",
+          { $remote.dump($thread) }
+
+        table-print
+          "Stack trace of thread &bold($thread)" => format-backtrace(@frames);
+    }
+}
+
+sub caller(Int() $handle --> Nil) {
     my $result := remote
-      "Fetching caller context for handle $handle",
+      "fetching caller context for handle $handle",
       { $remote.caller-context-handle($handle) }
 
     say $result.&to-json(:pretty);
 }
 
+sub clearbp(Str() $file, Int() $line --> Nil) {
+    my $result := remote
+      "clearing breakpoint for $file:$line",
+      { $remote.clear-breakpoints($file, $line) }
+    say $result.&to-json(:pretty);
+}
+
+sub coderef(Int() $frame, $id) {
+    with thread($id) -> $thread {
+        my $result = remote
+          "fetching coderef handle for frame $frame",
+          { $remote.coderef-handle($thread, $frame) }
+        say $result.&to-json(:pretty);
+    }
+}
+
+sub color($state --> Nil) {
+    with $state {
+        wants-color() = $state eq "on";
+        say "Colored output is now &bold($state)";
+    }
+    else {
+        say "Colored output is currently &bold(wants-color() ?? "on" !! "off")";
+        say "(but color is not available; install Terminal::ANSIColor maybe?)"
+          unless has-color;
+    }
+}
+
 sub connect($port) {
     my $result := remote
-      "Connecting to MoarVM remote on localhost port $port",
+      "connecting to MoarVM remote on localhost port $port",
       { MoarVM::Remote.connect($port) }
 
     say "Connected on localhost port $port";
     $result
 }
 
-sub ctxhandle(Int() $frame, $id) {
+sub ctxhandle(Int() $frame, $id --> Nil) {
     with thread($id) -> $thread {
         my $result := remote
-          "Fetching context handle for frame $frame in thread $thread",
+          "fetching context handle for frame $frame in thread $thread",
           { $remote.context-handle($thread, $frame)}
 
         say $result.&to-json(:pretty);
     }
 }
 
-sub frame(Int() $frame, $id) {
+sub debug($state --> Nil) {
+    with $state {
+        $remote.debug = $state eq "on";
+        say "Debug output is now &bold($state)";
+    }
+    else {
+        say "Debug currently &bold($remote.debug ?? "on" !! "off")";
+    }
+}
+
+sub decont(Int() $handle, $id --> Nil) {
+    with thread($id) -> $thread {
+        my $result := remote
+          "fetching handle for decontainerized value of handle $handle",
+          { $remote.decontainerize($thread, $handle) }
+        say $result.&to-json(:pretty);
+    }
+}
+
+sub frame(Int() $frame, $id --> Nil) {
     with thread($id) -> $thread {
         my @frames := remote "fetching backtrace", { $remote.dump($thread) }
 
@@ -315,13 +405,36 @@ sub frame(Int() $frame, $id) {
     }
 }
 
+sub hllsym($name, $key --> Nil) {
+    with $name {
+        with $key {
+            my $result := remote
+              "fetching HLL sym '$key' in '$name'",
+              { $remote.get-hll-sym($name.Str, $key.Str) }
+            say "handle: ", $result;
+        }
+        else {
+            my $result := remote
+              "fetching names for HLL sym '$name'",
+              { $remote.get-hll-sym-keys($name.Str) }
+            say "Keys in HLL '$name': $result.sort(*.fc)";
+        }
+    }
+    else {
+        my $result := remote
+          "fetching HLL sym keys",
+          { $remote.get-available-hlls }
+        say "Available HLLs: $result.sort(*.fc)";
+    }
+}
+
 sub is-suspended(--> Nil) {
     say (remote "checking", { $remote.is-execution-suspended })
       ?? "No user threads are running"
       !! "All user threads are running";
 }
 
-sub lexicals(Int() $handle) {
+sub lexicals(Int() $handle --> Nil) {
     @last-command-handles = Empty;
 
     my $result := remote
@@ -333,7 +446,7 @@ sub lexicals(Int() $handle) {
         => format-lexicals-for-frame($result, handles-seen => @last-command-handles);
 }
 
-sub metadata(Int() $handle) {
+sub metadata(Int() $handle --> Nil) {
     my $result := remote
       "fetching metadata of handle $handle",
       { $remote.object-metadata($handle) }
@@ -367,6 +480,54 @@ sub outer(Int() $handle --> Nil) {
     say $result.&to-json(:pretty);
 }
 
+sub positionals(Int() $handle --> Nil) {
+    my $result := remote
+      "fetching positional elements for handle $handle",
+      { $remote.object-positionals($handle) }
+
+    my @elements is List = gather {
+        my $cnt = $result<start>;
+        if $result<kind> eq "obj" {
+            @last-command-handles = Empty;
+            for $result<contents>.list {
+                my @attributes = format-attributes($_);
+                @last-command-handles.push($_<handle>) if $_<handle>;
+                take [$cnt++, bold($_<handle>), $_<type>, @attributes.join(", ")];
+            }
+        }
+        else {
+            for $result<contents>.list {
+                take [$cnt++, $_];
+            }
+        }
+    }
+    table-print "Positionals in handle &bold($handle)" => @elements;
+}
+
+sub release-handles(*@handles --> Nil) {
+    my int $elems = @handles.elems;
+    my str $s = $elems == 1 ?? "" !! "s";
+    remote
+      "releasing $elems handle$s",
+      { $remote.release-handles(@handles.map(*.Int)) }
+    say "Released $elems handle$s";
+}
+
+sub release-all-handles(*@keep --> Nil) {
+    my $to-free := @last-command-handles (-) @keep.map(*.Int);
+    my int $elems = $to-free.elems;
+    my str $s = $elems == 1 ?? "" !! "s";
+    remote
+      "releasing $elems handle$s",
+      { $remote.release-handles($to-free.keys) }
+
+    say @keep
+      ?? "Released $elems handle$s, keeping @keep.elems()"
+      !! "Released $elems handle$s";
+
+    @last-command-handles = Empty;
+}
+
 sub resume($thread is copy --> Nil) {
     $thread = $thread.defined ?? $thread.Int !! Whatever;
     remote "resuming", { $remote.resume($thread) }
@@ -374,6 +535,26 @@ sub resume($thread is copy --> Nil) {
     say $thread
       ?? "Resumed thread $thread"
       !! "Resumed all user threads";
+}
+
+sub step($type is copy, $id) {
+    with thread($id) -> $thread {
+        $type = $type ?? $type.Str !! "into";
+        my %named = $type => True;
+
+        $events-lock.protect: {
+            my $result := remote
+              "stepping $type",
+              { $remote.step($thread, |%named) }
+
+            %interesting-events{$result} = -> $event {
+                table-print
+                  "Stack trace of thread &bold($event<thread>)"
+                    => format-backtrace($event<frames>);
+                "delete";
+            }
+        }
+    }
 }
 
 sub suspend($thread is copy --> Nil) {
@@ -406,32 +587,30 @@ sub MAIN(
 ) is export {
     $abbreviate-length = $abvl;
 
-    say "Welcome to the MoarVM Remote Debugger";
+    say "Welcome to the MoarVM Remote Debugger!";
 
     unless %*ENV<_>:exists and %*ENV<_>.ends-with: 'rlwrap' {
         say "";
         say "For best results, please run this program inside rlwrap";
     }
     $remote := connect($port);
-    assume-thread(1);
 
-    my %interesting-events;
-    my Lock $events-lock .= new;
-
-    $remote.events.tap({
+    $remote.events.tap: {
         $events-lock.protect: {
-        if %interesting-events{.<id>}:exists {
-            if %interesting-events{.<id>}($_) eq "delete" {
-                %interesting-events{.<id>}:delete
+            my $id := .<id>;
+            if %interesting-events{$id}:exists {
+                if %interesting-events{$id}($_) eq "delete" {
+                    %interesting-events{$id}:delete
+                }
             }
+            else {
+                say "Got event: "; .say
+            }
+            Nil;
         }
-        else {
-            say "Got event: "; .say
-        }
-        Nil;
     }
-    });
 
+    assume-thread(1);
     until (my $input = prompt("> ")) === Any {
         $_ = $input;
         if m/^$/ {
@@ -466,10 +645,8 @@ sub MAIN(
         when /:s outer (\d+) / {
             outer $0;
         }
-        when /:s coderef [(\d+)||<?{ defined $default-thread }>||<!>] (\d+) / {
-            my $thread = $0 ?? $0.Int.self !! $default-thread;
-            my $result = await $remote.coderef-handle($thread, $1.Int.self);
-            say $result.&to-json(:pretty);
+        when /:s coderef (\d+) (\d+)? / {
+            coderef $0, $1;
         }
         when /:s all lex[icals]? (\d+)? / {
             all-lexicals $0;
@@ -481,69 +658,19 @@ sub MAIN(
             metadata $0;
         }
         when /:s attr[ibute]?s (\d+) / {
-            my $result = await $remote.attributes($0.Int.self);
-            my %by-class = $result.categorize(*.<class>);
-            my @table = gather for %by-class {
-                take "From class $_.key()" =>
-                    gather for @($_.value) {
-                        my @attributes = format-attributes($_);
-
-                        take (bold(.<handle> // ""), (.<kind> eq "obj" ?? .<type> !! .<kind>), .<name>, @attributes.join(", "))
-                    }.cache;
-                }.cache;
-            say "Attributes for handle &bold($0.Int)";
-            table-print(@table);
+            attributes $0;
         }
         when /:s pos[itionals]? (\d+) / {
-            my $result = await $remote.object-positionals($0.Int.self);
-            my @table = "Positionals in handle &bold($0.Int)" =>
-                gather {
-                    my $cnt = $result<start>;
-                    if $result<kind> eq "obj" {
-                        @last-command-handles = Empty;
-                        for $result<contents>.list {
-                            my @attributes = format-attributes($_);
-                            @last-command-handles.push($_<handle>) if $_<handle>;
-                            take [$cnt++, bold($_<handle>), $_<type>, @attributes.join(", ")];
-                        }
-                    } else {
-                        for $result<contents>.list {
-                            take [$cnt++, $_];
-                        }
-                    }
-                }.cache;
-            table-print(@table);
+            positionals $0;
         }
         when /:s assoc[iatives]? (\d+) / {
-            my $result = await $remote.object-associatives($0.Int.self);
-            my @table = "Associatives in handle &bold($0.Int)" =>
-                gather {
-                    if $result<kind> eq "obj" {
-                        @last-command-handles = Empty;
-                        for $result<contents>.list {
-                            my @attributes = format-attributes(.value);
-                            @last-command-handles.push(.value<handle>) if .value<handle>;
-                            take [&bold(.value<handle>), .key, .value<type>, @attributes.join(", ")];
-                        }
-                    } else {
-                        take ["NYI"];
-                    }
-                }.cache;
-            table-print(@table);
+            associatives $0;
         }
-        when /:s met[hod]? (\d+) \"(<-["]>+)\" [(\d+)||<?{ defined $default-thread }>||<!>]/ {
-            my $thread = $2 ?? $2.Int.self !! $default-thread;
-            my $result = await $remote.find-method($thread, $0.Int, $1.Str);
-            say $result.&to-json(:pretty);
-        }
-        when /:s de[cont]? (\d+) [(\d+)||<?{ defined $default-thread }>||<!>]/ {
-            my $thread = $1 ?? $1.Int.self !! $default-thread;
-            my $result = await $remote.decontainerize($thread, $0.Int);
-            say $result.&to-json(:pretty);
+        when /:s de[cont]? (\d+) (\d+)? / {
+            decont $0, $1;
         }
         when /:s clearbp \"(.*?)\" (\d+) / {
-            my $result = await $remote.clear-breakpoints($0.Str, $1.Int);
-            say $result.&to-json(:pretty);
+            clearbp $0, $1;
         }
         when /:s [breakpoint|bp][":"|<.ws>]\"(.*?)\" (\d+) (\d?) (\d?) / {
             my $result = await $remote.breakpoint($0.Str, $1.Int, suspend => so ($2 && $2.Int), stacktrace => so ($3 && $3.Int));
@@ -552,14 +679,10 @@ sub MAIN(
             output-breakpoint-notifications($file, $line, $_) with $result<notifications>;
         }
         when /:s release[handles]? (\d+)+ % \s+/ {
-            my $result = await $remote.release-handles($0>>.Int);
-            say $result.&to-json(:pretty);
+            release-handles |$0;
         }
         when /:s release all [handles]? [keep (\d+)+ % \s+]?/ {
-            my @free = (@last-command-handles (-) $0.List>>.Int).keys;
-            say "releasing @free.elems() handles{ " keeping $0.List.elems()" if $0 }";
-            my $result = await $remote.release-handles(@free);
-            @last-command-handles = Empty;
+            release-all-handles |$0;
         }
         when /:s assume thread (\d+)? / {
             assume-thread($0);
@@ -567,21 +690,8 @@ sub MAIN(
         when /:s assume no thread / {
             assume-thread;
         }
-        when /:s s[tep]? (into|over|out)? [(\d+)||<?{ defined $default-thread }>||<!>] / {
-            my $thread = $1 ?? $1.Int.self !! $default-thread;
-            $events-lock.protect: {
-                my $result = await do
-                    if    !$0.defined or $0 eq "into"
-                                       { $remote.step($thread, :into) }
-                    elsif $0 eq "over" { $remote.step($thread, :over) }
-                    elsif $0 eq "out"  { $remote.step($thread, :out) };
-                %interesting-events{$result} = -> $event {
-                    my @frames := $event<frames>;
-                    my @table = "Stack trace of thread &bold($event<thread>)" => format-backtrace(@frames);
-                    table-print @table;
-                    "delete";
-                }
-            }
+        when /:s s[tep]? (into|over|out)? (\d+)? / {
+            step $0, $1;
         }
         when / invoke \s+ (\d+) [\s+ | $] $<arguments>=(( "i:" | "s:" | "n:" | s? "o:" ) ( \" <-["]>* \" | \S+ ) )* % \s+ $ / {
             my @arguments = $<arguments>.map({
@@ -600,20 +710,7 @@ sub MAIN(
             });
         }
         when /:s hll[sym]? [$<hllname>=\S+ [$<hllkey>=\S+]? ]? / {
-            with $<hllname> {
-                with $<hllkey> {
-                    my $result = await $remote.get-hll-sym($<hllname>.Str, $<hllkey>.Str);
-                    say "result: ", $result;
-                }
-                else {
-                    my $result = await $remote.get-hll-sym-keys($<hllname>.Str);
-                    say "result: ", $result;
-                }
-            }
-            else {
-                my $result = await $remote.get-available-hlls();
-                say "result: ", $result;
-            }
+            hllsym $<hllname>, $<hllkey>;
         }
         when /:s abbrev length (\d+) / {
             $abbreviate-length = $0.Int;
@@ -628,23 +725,10 @@ sub MAIN(
             say $footer;
         }
         when /:s debug [(on|off)]?/ {
-            with $0 {
-                $remote.debug = $0.Str eq "on";
-                say "debug output is now &bold($0.Str)";
-            }
-            else {
-                say "debug output is currently &bold($remote.debug ?? "on" !! "off")";
-            }
+            debug $0;
         }
         when /:s color [(on|off)]?/ {
-            with $0 {
-                wants-color() = $0.Str eq "on";
-                say "colored output is now &bold($0.Str)";
-            }
-            else {
-                say "colored output is currently &bold(wants-color() ?? "on" !! "off")";
-                say "(but color is not available; install Terminal::ANSIColor maybe?)" unless has-color;
-            }
+            color $0;
         }
         when /:s help / {
             help;

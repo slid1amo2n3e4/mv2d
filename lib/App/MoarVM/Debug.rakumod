@@ -183,6 +183,20 @@ CMDS
 
 #- action handling subs --------------------------------------------------------
 
+sub abbrev(Str() $key --> Nil) {
+    say my $header = "Contents of entry $key:";
+    say "=" x $header.chars;
+    say %abbreviated{$key};
+    my $footer = "End of Contents of entry $key";
+    say "=" x $footer.chars;
+    say $footer;
+}
+
+sub abbrev-length(Int() $length --> Nil) {
+    $abbreviate-length = $length;
+    say "Abbreviation length is set to $length";
+}
+
 # convenience: grab all lexicals on the stack
 sub all-lexicals($id --> Nil) {
     with thread($id) -> $thread {
@@ -309,6 +323,17 @@ sub backtrace($id --> Nil) {
     }
 }
 
+sub breakpoint(
+  Str() $file, Int() $line, Bool() $suspend = False, Bool() $stacktrace = False
+--> Nil) {
+    my $result := remote
+      "setting breakpoint",
+      { $remote.breakpoint($file, $line, :$suspend, :$stacktrace) }
+
+    output-breakpoint-notifications($file, $result<line>, $_)
+      with $result<notifications>;
+}
+
 sub caller(Int() $handle --> Nil) {
     my $result := remote
       "fetching caller context for handle $handle",
@@ -425,6 +450,34 @@ sub hllsym($name, $key --> Nil) {
           "fetching HLL sym keys",
           { $remote.get-available-hlls }
         say "Available HLLs: $result.sort(*.fc)";
+    }
+}
+
+sub invoke(Int() $handle, *@raw --> Nil) {
+    my $thread = $default-thread;
+
+    my @arguments = $@raw.map({
+        .[0] eq "i:"        ?? ("int", try +.[1]) !!
+        .[0] eq        "o:" ?? ("obj", try +.[1]) !!
+        .[0] eq "s:" ?? ("str", .[1].starts-with('"') && .[1].ends-with('"') ?? .[1].substr(1, *-1) !! .[1].Str) !!
+        .[0] eq "so:" ?? ("str", .[1].Int) !!
+        .[0] eq "n:" ?? ("num", .[1].Str.Num) !!
+        die "can't figure out this argument: $_.Str()"
+    });
+    my str $s = @arguments.elems == 1 ?? "" !! "s";
+
+    my $promise := remote
+      "invoking $handle in thread $thread with @arguments.elems() argument$s",
+       { $remote.invoke($thread, $handle, @arguments) }
+
+    $promise.then: {
+        table-print
+          "Invocation result of &bold($handle) with &bold(+@arguments) arguments"
+            => .result
+               .grep(*.key eq none(<type id>))
+               .sort(*.value.^name)
+               .map(*.kv)
+               .List;
     }
 }
 
@@ -673,10 +726,7 @@ sub MAIN(
             clearbp $0, $1;
         }
         when /:s [breakpoint|bp][":"|<.ws>]\"(.*?)\" (\d+) (\d?) (\d?) / {
-            my $result = await $remote.breakpoint($0.Str, $1.Int, suspend => so ($2 && $2.Int), stacktrace => so ($3 && $3.Int));
-            my $file = $0.Str;
-            my $line = $result<line>;
-            output-breakpoint-notifications($file, $line, $_) with $result<notifications>;
+            breakpoint $0, $1, $2, $3;
         }
         when /:s release[handles]? (\d+)+ % \s+/ {
             release-handles |$0;
@@ -694,35 +744,16 @@ sub MAIN(
             step $0, $1;
         }
         when / invoke \s+ (\d+) [\s+ | $] $<arguments>=(( "i:" | "s:" | "n:" | s? "o:" ) ( \" <-["]>* \" | \S+ ) )* % \s+ $ / {
-            my @arguments = $<arguments>.map({
-                .[0] eq "i:"        ?? ("int", try +.[1]) !!
-                .[0] eq        "o:" ?? ("obj", try +.[1]) !!
-                .[0] eq "s:" ?? ("str", .[1].starts-with('"') && .[1].ends-with('"') ?? .[1].substr(1, *-1) !! .[1].Str) !!
-                .[0] eq "so:" ?? ("str", .[1].Int) !!
-                .[0] eq "n:" ?? ("num", .[1].Str.Num) !!
-                die "can't figure out this argument: $_.Str()"
-            });
-            $remote.invoke(1, $0.Int, @arguments).then(-> $_ is copy {
-                $_ = .result;
-                my @table = "Invocation result of &bold($0.Int) with &bold(+@arguments) arguments\n"
-                    => (.grep(*.key eq none(<type id>)).sort(*.value.^name).map(*.kv).cache);
-                table-print @table;
-            });
+            invoke $0, |$<arguments>;
         }
         when /:s hll[sym]? [$<hllname>=\S+ [$<hllkey>=\S+]? ]? / {
             hllsym $<hllname>, $<hllkey>;
         }
         when /:s abbrev length (\d+) / {
-            $abbreviate-length = $0.Int;
-            say "Abbreviation length is set to $abbreviate-length";
+            abbrev-length $0;
         }
         when /:s abbrev (.*) / {
-            say my $header = "Contents of entry $0.Str():";
-            say "=" x $header.chars;
-            say %abbreviated{$0.Str};
-            my $footer = "End of Contents of entry $0.Str()";
-            say "=" x $footer.chars;
-            say $footer;
+            abbrev $0;
         }
         when /:s debug [(on|off)]?/ {
             debug $0;

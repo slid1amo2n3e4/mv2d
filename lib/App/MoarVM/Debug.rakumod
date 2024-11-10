@@ -595,17 +595,41 @@ sub step($type is copy, $id) {
         $type = $type ?? $type.Str !! "into";
         my %named = $type => True;
 
+        my Promise $step-finished .= new;
+
         $events-lock.protect: {
             my $result := remote
               "stepping $type",
               { $remote.step($thread, |%named) }
 
+            my $before = now;
+
             %interesting-events{$result} = -> $event {
+                my $timetext = now >= $before + 3
+                  ?? " last requested $((now - $before).fmt("%6.3f")) ago"
+                  !! "";
                 table-print
-                  "Stack trace of thread &bold($event<thread>)"
+                  "Stack trace of thread &bold($event<thread>) after step $type$timetext"
                     => format-backtrace($event<frames>);
+                $step-finished.keep();
                 "delete";
             }
+        }
+
+        # if the step finishes quite quickly, we wait a tiny moment before
+        # spitting out the prompt again.
+        # If you step into something that blocks, like sleep or IO or whatever,
+        # we don't want to slow the user down.
+        #
+        # The brief wait also makes it possible to just hold down enter
+        # without the repl somehow getting stuck.
+        react {
+          whenever $step-finished {
+            last;
+          }
+          whenever Promise.in(0.07) {
+            last;
+          }
         }
     }
 }

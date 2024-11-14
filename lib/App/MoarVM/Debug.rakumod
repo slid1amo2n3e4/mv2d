@@ -538,23 +538,59 @@ sub positionals(Int() $handle --> Nil) {
       "fetching positional elements for handle $handle",
       { $remote.object-positionals($handle) }
 
-    my @elements is List = gather {
-        my $cnt = $result<start>;
-        if $result<kind> eq "obj" {
-            @last-command-handles = Empty;
-            for $result<contents>.list {
-                my @attributes = format-attributes($_);
-                @last-command-handles.push($_<handle>) if $_<handle>;
-                take [$cnt++, bold($_<handle>), $_<type>, @attributes.join(", ")];
-            }
+    my $cnt = $result<start>;
+    if $result<kind> eq "obj" {
+        @last-command-handles = Empty;
+        my @elements is List = do for $result<contents>.list {
+            my @attributes = format-attributes($_);
+            @last-command-handles.push($_<handle>) if $_<handle>;
+            [$cnt++, bold($_<handle>), $_<type>, @attributes.join(", ")]
         }
-        else {
-            for $result<contents>.list {
-                take [$cnt++, $_];
-            }
-        }
+        table-print "Positionals in handle &bold($handle)" => @elements;
     }
-    table-print "Positionals in handle &bold($handle)" => @elements;
+    elsif $result<kind> eq "callsite" {
+        my $cnt = 0;
+        my $name-idx = 0;
+        dd $result<contents>.list;
+        dd $result<callsite><callsite_flags>.list;
+        my @elements is List = do for $result<contents>.list Z $result<callsite><callsite_flags>.list -> ($_, $flags) {
+            my @attributes;
+            push @attributes, "literal" if "literal" (elem) $flags;
+            push @attributes, "named " ~ ($result<callsite><arg_names>[$name-idx++]) if "named" (elem) $flags;
+
+            if $flags[0] eq "obj" {
+                @attributes.append(format-attributes($_));
+                [$cnt++, bold($_<handle>), $_<type>, "", @attributes.join(", ")];
+            }
+            elsif $flags[0] eq "str" {
+                [$cnt++, "", "Str", $_.raku, @attributes.join(", ")];
+            }
+            elsif $flags[0] eq "int" | "uint" {
+                [$cnt++, "", $flags[0], $_, @attributes.join(", ")];
+            }
+            else {
+                [$cnt++, "", colored("?", "red"), $_.raku, @attributes.join(", ")];
+            }
+        }
+
+        my $cscnt = 0;
+        my $csname-idx = 0;
+        my @callsite is List = do for $result<callsite><callsite_flags>.list {
+            my @attributes;
+            push @attributes, "literal" if "literal" (elem) $_;
+            push @attributes, "named " ~ ($result<callsite><arg_names>[$csname-idx++]) if "named" (elem) $_;
+
+            [$cscnt++, "", $_[0], "", @attributes.join(", ")]
+        }
+
+        table-print ["Callsite (arguments shape)" => @callsite, "Positionals in handle &bold($handle)" => @elements];
+    }
+    else {
+        my @elements is List = do for $result<contents>.list {
+            [$cnt++, $_]
+        }
+        table-print "Positionals in handle &bold($handle)" => @elements;
+    }
 }
 
 sub release-handles(*@handles --> Nil) {

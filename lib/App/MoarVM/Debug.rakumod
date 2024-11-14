@@ -243,7 +243,7 @@ sub all-lexicals($id --> Nil) {
                 my $handle   := @frame-handles[$_];
                 my $lexicals := @all-lexicals[$_];
 
-                my $framedetails := "$_<name> ($_<file>:$_<line>)" given @allframes[$_];
+                my $framedetails := "$_<name> ($_<file>:$(colored($_<line>, "bold")))" given @allframes[$_];
 
                 "Frame $_ - $framedetails - handle: &bold($handle)"
                   => format-lexicals-for-frame($lexicals,

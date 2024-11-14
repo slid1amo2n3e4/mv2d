@@ -88,7 +88,7 @@ our sub format-backtrace(@backtrace) is export {
 
         my str $bytecode = .<bytecode_file> // "";
         $bytecode = $bytecode.substr($offset) if $bytecode;
-        ($++, .<type>, $name, "$_<file>:$_<line>", $bytecode)
+        ($++, .<type>, $name, "$_<file>:" ~ colored(~$_<line>, "bold"), $bytecode)
     }).List
 }
 

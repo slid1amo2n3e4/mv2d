@@ -23,7 +23,7 @@ our sub colorstrip(Str() $text) is export {
     }
 }
 
-our sub strlen(Str() $what) is export {
+our sub strlen(Str() $what) is nodal is export {
     if $has-color {
         Terminal::ANSIColor::EXPORT::DEFAULT::colorstrip($what).chars;
     } else {

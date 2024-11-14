@@ -634,6 +634,50 @@ sub step($type is copy, $id) {
     }
 }
 
+sub repeating-step($id, $codetext) {
+    with thread($id) -> $thread {
+        use MONKEY-SEE-NO-EVAL;
+        my $steppercode = EVAL '-> $_ ' ~ $codetext;
+
+        my $keep-running = True;
+
+        while $keep-running {
+            my Promise $step-finished .= new;
+
+            my $before;
+
+            $events-lock.protect: {
+                my $result := await $remote.step($thread, :into);
+
+                $before = now;
+
+                %interesting-events{$result} = -> $event {
+                    $step-finished.keep($event);
+                    "delete";
+                }
+            }
+
+            react {
+                whenever $step-finished -> $event {
+                    my &*print-stacktrace = {
+                        table-print
+                            "Stack trace of thread &bold($event<thread>) after automatic step"
+                                => format-backtrace($event<frames>);
+                    }
+                    my $*before = $before;
+                    my $*remote = $remote;
+
+                    if $steppercode($event) {
+                        say "User-provided stepper function indicated stop.";
+                        $keep-running = False;
+                    }
+                    last;
+                }
+            }
+        }
+    }
+}
+
 sub suspend($thread is copy --> Nil) {
     $thread = $thread.defined ?? $thread.Int !! Whatever;
     remote "suspending", { $remote.suspend($thread) }
@@ -763,6 +807,9 @@ sub MAIN(
         }
         when /:s assume no thread / {
             assume-thread;
+        }
+        when /:s s[tep]? u[ntil]? (\d+)? ('{' .* '}') / {
+            repeating-step $0, $1;
         }
         when /:s s[tep]? (into|over|out)? (\d+)? / {
             step $0, $1;

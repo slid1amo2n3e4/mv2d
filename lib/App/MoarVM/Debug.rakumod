@@ -675,41 +675,115 @@ sub repeating-step($id, $codetext) {
         use MONKEY-SEE-NO-EVAL;
         my $steppercode = EVAL '-> $_ ' ~ $codetext;
 
-        my $keep-running = True;
-
-        while $keep-running {
-            my Promise $step-finished .= new;
-
-            my $before;
-
-            $events-lock.protect: {
-                my $result := await $remote.step($thread, :into);
-
-                $before = now;
-
-                %interesting-events{$result} = -> $event {
-                    $step-finished.keep($event);
-                    "delete";
-                }
+        my Supplier $step-request-supplier .= new;
+        sub one-more-step() {
+            $step-request-supplier.emit(++$);
+            CATCH {
+                say "caught in one-more-step:";
+                .say;
+                $!.say;
             }
+        }
 
-            react {
-                whenever $step-finished -> $event {
+        say "Going to step thread $thread until the given code returns True";
+        say "Press ctrl-c to interrupt.";
+        say "";
+
+        react {
+            whenever $step-request-supplier.Supply {
+                my Promise $step-finished .= new;
+                my $before;
+
+                $events-lock.protect: {
+                    my $result := await $remote.step($thread, :into);
+
+                    $before = now;
+
+                    %interesting-events{$result} = -> $event {
+                        $step-finished.keep($event);
+                        "delete";
+                    }
+                }
+
+                my $last-step-finish-tap = do whenever $step-finished -> $event {
                     my &*print-stacktrace = {
+                        # Since we are outputting a running "x steps done"
+                        # where we keep the line around with backspaces, we
+                        # should put empty lines before and after any output
+                        say "";
+                        say "";
                         table-print
                             "Stack trace of thread &bold($event<thread>) after automatic step"
                                 => format-backtrace($event<frames>);
+                        say "";
+                        say "";
                     }
                     my $*before = $before;
                     my $*remote = $remote;
 
                     if $steppercode($event) {
                         say "User-provided stepper function indicated stop.";
-                        $keep-running = False;
+                        $step-request-supplier.done;
                     }
-                    last;
+                    else {
+                        one-more-step;
+                    }
+                }
+
+                # when the sigint handler calls .done on the
+                # step request supply, this LAST block is called.
+                # We have access to the last step finish tap as well
+                # as the last in-use step-finished promise.
+                LAST {
+                    # After the user stopped the stepping, don't run the
+                    # stepper code any more.
+                    $last-step-finish-tap.close;
+
+                    my $start-waiting = now;
+
+                    my $suggestion-timeout-tap = do whenever Promise.in(2) {
+                        say "";
+                        say "Step is not finishing quickly. Press ctrl-c a second time to stop waiting";
+                        say "";
+                    }
+                    whenever $step-finished {
+                        $suggestion-timeout-tap.close;
+                        done;
+                    }
+                    # Let's also output a notification when the step has
+                    # finished even if we have aborted this react block.
+                    $step-finished.then({
+                        if $start-waiting before now - 2 {
+                            say "Step started in a step-until { now - $start-waiting }s ago finished.";
+                        }
+                    });
                 }
             }
+            whenever $step-request-supplier.Supply -> $n {
+                FIRST {
+                    say "Starting to step ...";
+                }
+                print $backspaces.substr(0, 20);
+                print "done $n steps ...";
+            }
+            whenever signal(SIGINT) {
+                say "";
+                say "Sigint caught. Will not request any more steps ...";
+                say "";
+                $step-request-supplier.done;
+                # We can notify the user about the ability to press ctrl-c a
+                # second time if we're not done immediately.
+                # We don't immediately just exit the whole react block because
+                # leaving a step "hanging" could be undesirable.
+                whenever signal(SIGINT) {
+                    say "";
+                    say "Sigint caught a second time. Leaving the stepping process ...";
+                    say "";
+                    done;
+                }
+                last;
+            }
+            $step-request-supplier.emit(0);
         }
     }
 }

@@ -904,7 +904,7 @@ sub MAIN(
             clearbp $0, $1;
         }
         when /:s [breakpoint|bp][":"|<.ws>]\"(.*?)\" (\d+) (\d?) (\d?) / {
-            breakpoint $0, $1, $2, $3;
+            breakpoint $0, $1, +$2, +$3;
         }
         when /:s release[handles]? (\d+)+ % \s+/ {
             release-handles |$0;

@@ -368,7 +368,7 @@ multi sub clearbp(Str() $file, Int() $line, Int() $id? is copy --> Nil) {
         }
         say "No breakpoint like that ($file:$line) exists" and return if not defined $id
     }
-    %breakpoints{$id} = Nil;
+    %breakpoints{$id}:delete;
 
     my $result := remote
       "clearing breakpoint for $file:$line",

@@ -331,6 +331,16 @@ sub backtrace($id --> Nil) {
 sub breakpoint(
   Str() $file, Int() $line, Bool() $suspend = False, Bool() $stacktrace = False
 --> Nil) {
+    if %breakpoints.pairs.first: { .value<file> eq $file and .value<line> eq $line } -> $b {
+        say "A breakpoint for this file and line (suspend={{$b.value<suspend>}} stacktrace={$b.value<suspend>}) already exists.";
+        say 'Replace it with this new one? (y/n)';        
+        while my $answer = prompt('> ') {
+            if    $answer eq 'y' { clearbp $b.key; last }
+            elsif $answer eq 'n' { return }
+            else                 { say "It's a y/n answer, but given $answer" }
+        }
+    }
+
     my $result := remote
       "setting breakpoint",
       { $remote.breakpoint($file, $line, :$suspend, :$stacktrace) }
@@ -362,12 +372,8 @@ multi sub clearbp(Int() $id --> Nil) {
 }
 
 multi sub clearbp(Str() $file, Int() $line, Int() $id? is copy --> Nil) {
-    if !defined $id {
-        for %breakpoints.kv -> $k, $v {
-            if $v { if $v<file> eq $file and $v<line> eq $line { $id = $k; last; } }
-        }
-        say "No breakpoint like that ($file:$line) exists" and return if not defined $id
-    }
+    $id //= %breakpoints.pairs.first({ .value<file> eq $file and .value<line> eq $line }).key
+        or say "No breakpoint like that ($file:$line) exists" and return;
     %breakpoints{$id}:delete;
 
     my $result := remote

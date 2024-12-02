@@ -329,7 +329,7 @@ sub backtrace($id --> Nil) {
 }
 
 sub breakpoint(
-  Str() $file, Int() $line, Bool() $suspend = False, Bool() $stacktrace = False
+  Str() $file, Int() $line, Bool() $suspend = True, Bool() $stacktrace = False
 --> Nil) {
     if %breakpoints.pairs.first: { .value<file> eq $file and .value<line> eq $line } -> $b {
         say "A breakpoint for this file and line (suspend={{$b.value<suspend>}} stacktrace={$b.value<suspend>}) already exists.";

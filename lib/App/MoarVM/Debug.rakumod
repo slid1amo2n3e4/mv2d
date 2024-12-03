@@ -331,8 +331,8 @@ sub backtrace($id --> Nil) {
 sub breakpoint(
   Str() $file, Int() $line, Bool() $suspend = True, Bool() $stacktrace = False
 --> Nil) {
-    if %breakpoints.pairs.first: { .value<file> eq $file and .value<line> eq $line } -> $b {
-        say "A breakpoint for this file and line (suspend={{$b.value<suspend>}} stacktrace={$b.value<suspend>}) already exists.";
+    if get-breakpoint(%breakpoints, $file, $line) -> $b {
+        say "A breakpoint for this file and line (suspend={{$b.value<suspend>}} stacktrace={$b.value<stacktrace>}) already exists.";
         say 'Replace it with this new one? (y/n)';        
         while my $answer = prompt('> ') {
             if    $answer eq 'y' { clearbp $b.key; last }
@@ -347,7 +347,7 @@ sub breakpoint(
     state $id = 1;
     %breakpoints{$id++} = %(:$file, :$line, :$suspend, :$stacktrace);
 
-    output-breakpoint-notifications($file, $result<line>, $_)
+    output-breakpoint-notifications($file, $result<line>, $_, %breakpoints)
       with $result<notifications>;
 }
 
@@ -372,8 +372,11 @@ multi sub clearbp(Int() $id --> Nil) {
 }
 
 multi sub clearbp(Str() $file, Int() $line, Int() $id? is copy --> Nil) {
-    $id //= %breakpoints.pairs.first({ .value<file> eq $file and .value<line> eq $line }).key
-        or say "No breakpoint like that ($file:$line) exists" and return;
+    unless $id {
+        my $b = get-breakpoint(%breakpoints, $file, $line)
+            or say "No breakpoint like that ($file:$line) exists" and return;
+        $id = $b.key;
+    }
     %breakpoints{$id}:delete;
 
     my $result := remote

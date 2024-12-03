@@ -933,7 +933,7 @@ multi sub MAIN(Str $path, Int $port, Int $abbreviate-length, *@args) is export {
             $0.Int ?? clearbp $0 !! clearbp $0, $1;
         }
         when /:s [breakpoint|bp][":"|<.ws>]\"(.*?)\" (\d+) (\d?) (\d?) / {
-            breakpoint $0, $1, +$2, +$3;
+            breakpoint $0, $1, $2 ~~ '0' ?? False !! True , +$3;
         }
         when /:s [breakpoints|bpl] / {
             breakpoint-list;

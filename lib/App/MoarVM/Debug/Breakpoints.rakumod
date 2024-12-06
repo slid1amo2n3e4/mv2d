@@ -33,7 +33,7 @@ sub list-file(Str $file, Int $line, %breakpoints --> Nil) is export {
     %files{$file} = $file.IO.open.lines.list unless %files{$file}:exists;
     my @lines := %files{$file};
     my $index = max $line - 6, 0;
-    my $end-index = min $line + 4, @lines.elems;
+    my $end-index = min $line + 4, @lines.elems - 1;
     until $index > $end-index {
         say get-breakpoint(%breakpoints, $file, $index + 1) ?? 'BR ' !! '   ',
             $index + 1 eq $line ?? '-->' !! '   ',

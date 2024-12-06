@@ -15,6 +15,7 @@ my %breakpoints;
 my %abbreviated;
 my %reverse-abbreviated;
 my $abbreviate-length;
+my $current-file;
 
 my @last-command-handles;
 my $last-command;
@@ -154,8 +155,9 @@ Supported commands:
   Release all handles allocated by the previous command, optionally keeping
   the specified handles for further use.
 
-&bold("[breakpoint|bp]") "[file path]" [line number] [suspend]? [stacktrace]?
+&bold("[breakpoint|bp]") [file path]? [line number] [suspend]? [stacktrace]?
   Sets a breakpoint for a given filename and line number.
+  If filename not given, assume last frame's/command's file.
   If suspend is 1, execution of the thread that hit it will stop.
   If stacktrace is 1, every hit will send a stack trace along with it.
 
@@ -852,6 +854,8 @@ sub thread-list(--> Nil) {
 multi sub MAIN(Str $path, Int $port, Int $abbreviate-length, *@args) is export {
     say "Welcome to the MoarVM Remote Debugger!";
 
+    $current-file = $path;
+
     unless %*ENV<_>:exists and %*ENV<_>.ends-with: 'rlwrap' {
         say "";
         say "For best results, please run this program inside rlwrap";
@@ -935,8 +939,8 @@ multi sub MAIN(Str $path, Int $port, Int $abbreviate-length, *@args) is export {
         when /:s clearbp [(\d+) | \"(.*?)\" (\d+)] / {
             $0.Int ?? clearbp $0 !! clearbp $0, $1;
         }
-        when /:s [breakpoint|bp][":"|<.ws>]\"(.*?)\" (\d+) (\d?) (\d?) / {
-            breakpoint $0, $1, $2 ~~ '0' ?? False !! True , +$3;
+        when /:s [breakpoint|bp][":"|<.ws>] (.*?) (\d+) (\d?) (\d?) / {
+            breakpoint $0.trim ?? $0 !! $current-file, $1, $2 ~~ '0' ?? False !! True , +$3;
         }
         when /:s [breakpoints|bpl] / {
             breakpoint-list;

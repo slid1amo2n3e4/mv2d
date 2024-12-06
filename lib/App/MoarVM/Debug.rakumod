@@ -10,7 +10,6 @@ my str $backspaces = "\b" x 80;
 
 my $remote;
 my $default-thread;
-my @user-threads;
 my %breakpoints;
 my %abbreviated;
 my %reverse-abbreviated;
@@ -452,8 +451,6 @@ sub frame(Int() $frame, $id --> Nil) {
         my @frames := remote "fetching backtrace", { $remote.dump($thread) }
 
         if @frames[$frame] -> %frame {
-            # ${:bytecode_file("/Users/vrurg/src/Perl6/BO-Trading/lib/.precomp/F4586E0D974A9D7EE7CD910A6978305B9EBD4E57/C4/C4B0B4FF604F072E60052CB30401D1B21830E56D"), :file("/Users/vrurg/src/Perl6/BO-Trading/lib/BO-Trading/Scraper.pm6 (BO-Trading::Scraper)"), :line(148), :name(""), :type("Block")}
-
             temp $abbreviate-length *= 2;
             table-print
               "Frame &bold($frame) of thread &bold($thread)"

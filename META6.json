@@ -1,27 +1,33 @@
 {
-  "auth": "zef:raku-community-modules",
+  "auth": "github:slid1amo2n3e4",
   "authors": [
-    "Timo Paulssen"
+    "slid1amo2n3e4",
+    "Contributors"
   ],
   "build-depends": [
   ],
   "depends": [
     "String::Utils",
-    "JSON::Fast",
-    "MoarVM::Remote"
+    "JSON::Fast"
   ],
-  "description": "A command line interface for debugging Raku and NQP code using the MoarVM remote debugger",
+  "description": "A Minimally Viable MoarVM debugger.",
   "license": "Artistic-2.0",
   "name": "App::MoarVM::Debug",
   "perl": "6.c",
   "provides": {
     "App::MoarVM::Debug": "lib/App/MoarVM/Debug.rakumod",
     "App::MoarVM::Debug::Breakpoints": "lib/App/MoarVM/Debug/Breakpoints.rakumod",
-    "App::MoarVM::Debug::Formatter": "lib/App/MoarVM/Debug/Formatter.rakumod"
+    "App::MoarVM::Debug::Formatter": "lib/App/MoarVM/Debug/Formatter.rakumod",
+    "MoarVM::Remote": "lib/MoarVM/Remote.rakumod"
   },
   "resources": [
   ],
-  "source-url": "https://github.com/raku-community-modules/App-MoarVM-Debug.git",
+  "support": {
+    "email": "slid1amo2n3e4@gmail.com",
+    "source": "https://github.com/slid1amo2n3e4/mv2d.git",    
+    "bugtracker": "https://github.com/slid1amo2n3e4/mv2d/issues"
+  },
+  "source-url": "https://github.com/slid1amo2n3e4/mv2d",
   "tags": [
     "MoarVM",
     "Debug",
@@ -35,5 +41,5 @@
   ],
   "test-depends": [
   ],
-  "version": "0.1.3"
+  "version": "0.1.0"
 }

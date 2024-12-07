@@ -1,9 +1,11 @@
+#!/usr/bin/env raku
+
 use App::MoarVM::Debug;
 
 multi sub MAIN(Str $path, Int :$port = %*ENV<MVM_DEBUG_PORT> // 27434,
                Int :$abbreviate-length = 70, *@args) {
   say "Incorrect file path $path" and return unless $path.IO.e;
-  my $proc := Proc::Async.new($*EXECUTABLE.absolute, "--debug-port=$port",
+  my $proc := Proc::Async.new('raku', "--debug-port=$port",
                               "--debug-suspend", "$path", |@args).start;
 
 

@@ -1,22 +1,6 @@
-Revision history for App-MoarVM-Debug
+Revision history for mv2d
 
 {{$NEXT}}
 
-0.1.3  2024-11-08T15:18:41+01:00
-    - Add dependency on String::Utils
-
-0.1.2  2024-11-08T15:11:21+01:00
-    - Rename "raku-debug" to "raku-remote-debug" to prevent
-      confusion with the already core-installed "raku-debug"
-      script
-    - Don't mention `rlwrap` if the program is already
-      `rlwrap`ped
-    - Streamline handling of many interacive options
-
-0.1.1  2024-11-07T20:20:54+01:00
-    - Simplify setup and handling by introducing the
-      "raku-debug" script, and adapt documentation
-      accordingly
-
-0.1.0  2024-11-07T15:29:54+01:00
-    - Initial version as a Raku Community Module
+0.1.0  2024-12-07T20:33
+    - Initial version as mv2d

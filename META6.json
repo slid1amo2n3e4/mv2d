@@ -9,7 +9,7 @@
   "depends": [
     "String::Utils",
     "JSON::Fast",
-    "Data::MessagePack",
+    "Data::MessagePack"
   ],
   "description": "A Minimally Viable MoarVM debugger.",
   "license": "Artistic-2.0",
